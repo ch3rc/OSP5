@@ -5,56 +5,133 @@
 //Project:	Assignment 5
 //File:		oss.c
 //==================================================================
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <errno.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <sys/time.h>
+#include <sys/msg.h>
+#include <semaphore.h>
 #include "share.h"
+
+typedef struct{
+
+	long mtype;
+	char msg[100];
+}Msg;
+
 
 int main(int argc, char *argv[])
 {
-	pid_t childPid;
-	int exitPid = 0;
-	int status = 0;
+	/* shared mem pointers clock, req, sem */
 
-	Clock* clockPtr = (Clock*)getMem(clockKey, clockSize, &clockID);
-	Msg* msgPtr = (Msg*)getMem(msgKey, msgSize, &msgID);
-	ReqCheck* reqPtr = (ReqCheck*)getMem(reqKey, reqSize, &reqID);
-	sem_t* semPtr = getSem(semKey, semSize, &semID);
-
-	initClock(clockPtr);
-
-	childPid = fork();
-
-	if(childPid < 0)
-	{
-		perror("ERROR: OSS: fork\n");
-		cleanAll();
-		exit(1);
-	}
+	srand(time(NULL));
 	
-	if(childPid == 0)
+	pid_t childPid;
+
+	initMem();
+
+	message();
+
+	Msg msg;
+
+	allAtOnce();
+
+	initClock(clock);
+	
+	//printDescriptor(req);
+	
+	//deadLock(req);
+	
+	Clock newProc;
+	newProc.seconds = 0;
+	newProc.nano = (rand() % 500000000) + 1;
+
+	Clock deadcheck;
+	deadcheck.seconds = 1;
+	deadcheck.nano = 0;
+
+		
+
+	while(1)
 	{
-		char str[20];
-		snprintf(str, sizeof(str), "%d", 1);
-		execlp("./userP", str, NULL);
-	}
-	msgPtr->state = 0;
-
-	fprintf(stderr, "OSS: test the rest\n");
-	sleep(1);
-
-	msgPtr->state = 1;
-
-	if((exitPid = waitpid((pid_t)-1, &status, NULL)) > 0)
-	{
-		if(WIFEXITED(status))
+		int i = 0;
+		if(compare(&clock, &newProc) == 0 && launched < MAX_PROCESSES)
 		{
-			if(WEXITSTATUS(status) == 12)
+			childPid = fork();
+
+			if(childpid < 0)
 			{
-				printf("OSS: child process has ended\n");
+				perror("ERROR: OSS: fork\n");
+				exit(1);
 			}
+			
+			if(childPid == 0)
+			{
+				execv("./userP", NULL);
+			}
+			
+			launched++;
+			
+			int pos = findSpot();
+		
+			req->pid[pos] = getpid();
+			
+			//increase clock for next process launch
+			newProc.seconds += clock->seconds;
+			newProc.nano += clock->nano;
+			unsigned int spawn = (rand() % 500000000) + 1;
+			tickClock(&newProc, spawn);
+
 		}
+
+		if(compare(&clock, &deadcheck) == 0)
+		{
+			deadLock(req);
+			deadcheck.seconds = clock->seconds;
+			deadcheck.nano = clock->nano;
+			unsigned int newDead = 1000000000;
+			tickClock(&deadcheck, newDead);
+		}
+
+		while(i < MAX_PROCESSES)
+		{
+
+			if(msgrcv(toOSS, &msg, sizeof(msg) req->pid[i], IPC_NOWAIT) > 0)
+			{
+				if(strcmp(msg.msg, "TERMINATE") == 0)
+				{
+					offThePid(req, req->pid[i]);
+				}
+			}
+
+			i++;
+		}
+
+		//TODO: msgrcv for terminate
+		//TODO: msgrcv for request
+		//TODO: msgrcv for release
+		//TODO: add time to clock with sems
+
+		
 	}
+
+		
+
+				
+	
+	
 
 	printf("OSS: finished and ending process\n");
+	clearMessage();
 	cleanAll();
 	return 0;
 }
+
+

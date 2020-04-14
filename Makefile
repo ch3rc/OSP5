@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -I. -g -Wall
-OBJS = setShare.o
+OBJS = setShare.o resources.o
 .SUFFIXES: .c .o
 
 all: oss userP
