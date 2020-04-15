@@ -26,6 +26,10 @@ typedef struct{
 	char msg[100];
 }Msg;
 
+int unaturalDeath;
+int naturealDeath;
+int launched;
+int death;
 
 int main(int argc, char *argv[])
 {
@@ -35,6 +39,8 @@ int main(int argc, char *argv[])
 	
 	pid_t childPid;
 
+	int status = 0;
+	
 	initMem();
 
 	message();
@@ -45,9 +51,9 @@ int main(int argc, char *argv[])
 
 	initClock(clock);
 	
-	//printDescriptor(req);
-	
-	//deadLock(req);
+	signal(SIGINT, killAll);
+	signal(SIGALRM, timesUp);
+	alarm(3);
 	
 	Clock newProc;
 	newProc.seconds = 0;
@@ -56,42 +62,48 @@ int main(int argc, char *argv[])
 	Clock deadcheck;
 	deadcheck.seconds = 1;
 	deadcheck.nano = 0;
+	
+	int i = 0;
 
-		
-
-	while(1)
+	while(death < 20)
 	{
-		int i = 0;
-		if(compare(&clock, &newProc) == 0 && launched < MAX_PROCESSES)
-		{
-			childPid = fork();
-
-			if(childpid < 0)
-			{
-				perror("ERROR: OSS: fork\n");
-				exit(1);
-			}
-			
-			if(childPid == 0)
-			{
-				execv("./userP", NULL);
-			}
-			
-			launched++;
-			
-			int pos = findSpot();
 		
-			req->pid[pos] = getpid();
+		if(compare(clock, &newProc) == 0 && launched < MAX_PROCESSES)
+		{
+			int pos = findSpot();
+			if(pos > -1)
+			{
+				childPid = fork();
+
+				if(childPid < 0)
+				{
+					perror("ERROR: OSS: fork\n");
+					endProcesses();
+					exit(1);
+				}
 			
-			//increase clock for next process launch
-			newProc.seconds += clock->seconds;
-			newProc.nano += clock->nano;
-			unsigned int spawn = (rand() % 500000000) + 1;
-			tickClock(&newProc, spawn);
+				if(childPid == 0)
+				{
+					char id[20];
+					snprintf(id, sizeof(id), "%d", pos);
+					execl("./userP", id, NULL);
+				}
+			
+				launched++;
+				
+				req->pid[pos] = pos + 1;
+		
+			
+				//increase clock for next process launch
+				newProc.seconds += clock->seconds;
+				newProc.nano += clock->nano;
+				unsigned int spawn = (rand() % 500000000) + 1;
+				tickClock(&newProc, spawn);
+			}
 
 		}
 
-		if(compare(&clock, &deadcheck) == 0)
+		if(compare(clock, &deadcheck) == 1)
 		{
 			deadLock(req);
 			deadcheck.seconds = clock->seconds;
@@ -100,32 +112,46 @@ int main(int argc, char *argv[])
 			tickClock(&deadcheck, newDead);
 		}
 
-		while(i < MAX_PROCESSES)
+		
+	
+		if(msgrcv(toOSS, &msg, sizeof(msg), req->pid[i], IPC_NOWAIT) > 0)
 		{
-
-			if(msgrcv(toOSS, &msg, sizeof(msg) req->pid[i], IPC_NOWAIT) > 0)
+			if(strcmp(msg.msg, "TERMINATE") == 0)
 			{
-				if(strcmp(msg.msg, "TERMINATE") == 0)
-				{
-					offThePid(req, req->pid[i]);
-				}
+				offThePid(req, req->pid[i]);
 			}
 
-			i++;
+			else if(strcmp(msg.msg, "RELEASE") == 0)
+			{
+				releaseResource(req, req->pid[i]);
+			}
 		}
 
-		//TODO: msgrcv for terminate
-		//TODO: msgrcv for request
-		//TODO: msgrcv for release
-		//TODO: add time to clock with sems
-
+		i++;
 		
+		sem_wait(sem);
+		tickClock(clock, 10000);
+		sem_post(sem);
+
+			
+		//TODO: msgrcv for request
+
+		if(death == 20)
+		{
+			break;
+		}
+
+		if(i == 17)
+		{
+			i = 0;
+		}
+	
 	}
 
 		
 
 				
-	
+	//endProcesses();	
 	
 
 	printf("OSS: finished and ending process\n");

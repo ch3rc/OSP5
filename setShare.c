@@ -33,9 +33,9 @@ const size_t clockSize = sizeof(Clock);
 const size_t reqSize = sizeof(Descriptor);
 const size_t semSize = sizeof(sem_t);
 
-const Clock *clock = NULL;
-const Descriptor* req = NULL;
-const sem_t* sem = NULL;
+Clock *clock = NULL;
+Descriptor* req = NULL;
+sem_t* sem = NULL;
 //Message queue keys and id's
 key_t msgTo;
 key_t msgFrm;
@@ -164,4 +164,74 @@ void initClock(Clock* mainClock)
 {
 	mainClock->nano = 0;
 	mainClock->seconds = 0;
+}
+
+
+void timesUp(int sig)
+{
+	char msg[] = "\nProgram has reached 3 seconds\n";
+	int msgSize = sizeof(msg);
+	write(STDERR_FILENO, msg, msgSize);
+
+	int i;
+	for(i = 0; i < MAX_PROCESSES; i++)
+	{
+		if(req->pid[i] != 0)
+		{
+			if(kill(req->pid[i], SIGTERM) == -1)
+			{
+				perror("ERROR: OSS: SIGTERM(timesUp)\n");
+			}
+		}
+	}
+	
+	clearMessage();
+	cleanAll();
+	exit(0);
+}
+
+void killAll(int sig)
+{
+	char msg[] = "\nCaught CTRL+C\n";
+	int msgSize = sizeof(msg);
+	write(STDERR_FILENO, msg, msgSize);
+
+	int i;
+	for(i = 0; i < MAX_PROCESSES; i++)
+	{
+		if(req->pid[i] != 0)
+		{
+			if(kill(req->pid[i], SIGTERM) == -1)
+			{
+				perror("ERROR: OSS: SIGTERM(killAll)\n");
+			}
+		}
+	}
+	clearMessage();
+	cleanAll();
+	exit(0);
+}
+
+void endProcesses()
+{
+	int i;
+	for(i = 0; i < MAX_PROCESSES; i++)
+	{
+		if(req->pid[i] != 0)
+		{
+			if(kill(req->pid[i], SIGTERM) == -1)
+			{
+				perror("ERROR: OSS: SIGTERM(endProcesses)\n");
+			}
+		}
+	}
+	clearMessage();
+	cleanAll();
+}
+
+void destroy(int sig)
+{
+	shmdt(&clockID);
+	shmdt(&reqID);
+	shmdt(&sem);
 }
