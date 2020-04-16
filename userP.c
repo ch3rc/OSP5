@@ -30,8 +30,8 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "YOU MADE IT IN\n");
 
 	/*shared mem pointers clock, req, sem */
-	signal(SIGTERM, destroy);
-	signal(SIGINT, destroy);
+	signal(SIGTERM, &destroy);
+	signal(SIGINT, &destroy);
 	
 	srand(time(0) ^ (getpid() << 16));
 
@@ -53,51 +53,89 @@ int main(int argc, char *argv[])
 	termtime.nano = clock->nano;
 	termtime.seconds = clock->seconds + 1;
 
-	//fprintf(stderr, "my pid = %d\n", req->pid[p]);
+	//fprintf(stderr, "my pid = %d\n", req->pid[p]);	
 
-
-
+	
 	while(1)
 	{
+		msgrcv(toUSR, &msg, sizeof(msg), req->pid[p], IPC_NOWAIT);
+		
+			
+		
+		if(strcmp(msg.msg, "DEAD") == 0)
+		{
+			msg.mtype = req->pid[p];
+			strcpy(msg.msg, "DEADLOCKED");
+			msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+			detachMem();
+			exit(12);
+		}
+
+
 		//terminate
 		if(compare(clock, &termtime) == 1)
 		{
-			if((rand() % 100) <= 15)
+			if((rand() % 100) <= 20)
 			{
+				//fprintf(stderr, "Terminating\n");
 				msg.mtype = req->pid[p];
 				strcpy(msg.msg, "TERMINATE");
 				msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
 				detachMem();
+				exit(12);
 			}
 			termtime.nano = clock->nano;
 			termtime.seconds = clock->seconds;
-			unsigned int bound = (rand() % 250000000);
+			unsigned int bound = (rand() % 2500000);
 			tickClock(&termtime, bound);
 		}
 		//release
-		if((rand() % 100) < 90)
+		if((rand() % 100) >= 80)
 		{
-			int itemToRelease = (rand() % 20);
-			int i, j;
-			for(i = 0; i < MAX_PROCESSES; i++)
+
+			int itemToRequest = (rand() % 20);
+			req->request[p][itemToRequest] = 1;
+
+			msg.mtype = req->pid[p];
+			strcpy(msg.msg, "REQUEST");
+			msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+
+			while(1)
 			{
-				if(i == p)
-				{
-					for(j = 0; j < MAX_RESOURCES; j++)
+				if(msgrcv(toUSR, &msg, sizeof(msg), req->pid[p], IPC_NOWAIT) > 0)
+				{	
+					if(strcmp(msg.msg, "ACCEPTED") == 0)
 					{
-						if(j == itemToRelease)
-						{		
-							int resVal = req->curAlloc[i][j];
-							req->release[i][j] = (rand() % resVal);
-						}
+						break;
+					}
+
+					if(strcmp(msg.msg, "DEAD") == 0)
+					{
+						msg.mtype = req->pid[p];
+						strcpy(msg.msg, "DEADLOCKED");
+						msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+						detachMem();
+						exit(12);
 					}
 				}
-			}
 			
-			msg.mtype = req->pid[p];
-			strcpy(msg.msg, "RELEASE");
-			msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+			}
+
 		}
+		else
+		{
+			int itemToRelease = (rand() % 20);
+			if(req->curAlloc[p][itemToRelease] != 0)
+			{
+				req->release[p][itemToRelease] = 1;
+				msg.mtype = req->pid[p];
+				strcpy(msg.msg, "RELEASE");
+				msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+			}
+	
+		}
+
+		
 
 		sem_wait(sem);
 		tickClock(clock, 10000);
@@ -105,8 +143,5 @@ int main(int argc, char *argv[])
 
 	}
 	
-
-	detachMem();
-	exit(12);
 
 }

@@ -18,6 +18,7 @@
 #include <sys/time.h>
 #include <sys/msg.h>
 #include <semaphore.h>
+
 #include "share.h"
 
 typedef struct{
@@ -38,6 +39,7 @@ int main(int argc, char *argv[])
 	srand(time(NULL));
 	
 	pid_t childPid;
+	int exitpid = 0;
 
 	int status = 0;
 	
@@ -51,8 +53,8 @@ int main(int argc, char *argv[])
 
 	initClock(clock);
 	
-	signal(SIGINT, killAll);
-	signal(SIGALRM, timesUp);
+	signal(SIGINT, &killAll);
+	signal(SIGALRM, &timesUp);
 	alarm(3);
 	
 	Clock newProc;
@@ -62,6 +64,8 @@ int main(int argc, char *argv[])
 	Clock deadcheck;
 	deadcheck.seconds = 1;
 	deadcheck.nano = 0;
+
+	struct Queue *queue = NULL;
 	
 	int i = 0;
 
@@ -71,6 +75,7 @@ int main(int argc, char *argv[])
 		if(compare(clock, &newProc) == 0 && launched < MAX_PROCESSES)
 		{
 			int pos = findSpot();
+
 			if(pos > -1)
 			{
 				childPid = fork();
@@ -91,8 +96,9 @@ int main(int argc, char *argv[])
 			
 				launched++;
 				
-				req->pid[pos] = pos + 1;
-		
+				req->pid[pos] = pos;
+				
+				fprintf(stderr, "launching child = %d\n", req->pid[pos]);	
 			
 				//increase clock for next process launch
 				newProc.seconds += clock->seconds;
@@ -105,7 +111,7 @@ int main(int argc, char *argv[])
 
 		if(compare(clock, &deadcheck) == 1)
 		{
-			deadLock(req);
+			deadLock(req, queue);
 			deadcheck.seconds = clock->seconds;
 			deadcheck.nano = clock->nano;
 			unsigned int newDead = 1000000000;
@@ -119,12 +125,44 @@ int main(int argc, char *argv[])
 			if(strcmp(msg.msg, "TERMINATE") == 0)
 			{
 				offThePid(req, req->pid[i]);
+				if(exitpid = waitpid(req->pid[i], &status, NULL) > 0)
+				{
+					if(WIFEXITED(status))
+					{
+						printf("a process has terminated\n");
+						launched--;
+						death++;
+						naturalDeath++;
+					}
+				}
 			}
 
-			else if(strcmp(msg.msg, "RELEASE") == 0)
+			if(strcmp(msg.msg, "RELEASE") == 0)
 			{
 				releaseResource(req, req->pid[i]);
 			}
+
+			if(strcmp(msg.msg, "REQUEST") == 0)
+			{
+				checkRequest(queue, req, req->pid[i]);
+			}
+
+			if(strcmp(msg.msg, "DEADLOCK") == 0)
+			{
+				fprintf(stderr, "its making it in here at least\n");
+				if(exitpid = waitpid(req->pid[i], &status, NULL) > 0);
+				{
+					fprintf(stderr,"casualty of deadlock\n");
+					launched--;
+					death++;
+					unaturalDeath++;
+				}
+			}
+		}
+
+		if(search(queue, req->pid[i]) == 1)
+		{
+			checkAgain(queue, req, req->pid[i]);
 		}
 
 		i++;

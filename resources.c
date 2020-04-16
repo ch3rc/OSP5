@@ -20,7 +20,7 @@
 #include <sys/msg.h>
 #include <semaphore.h>
 #include "share.h"
-#include "queue.h"
+
 
 int availMatrix[MAX_RESOURCES];
 int resMatrix[MAX_RESOURCES];
@@ -33,7 +33,6 @@ int written = 0;
 int launched = 0;
 int death = 0;
 
-Queue *queue = creatQueue(MAX_PROCESSES);
 
 /*shared memory pointers clock(timer), req(resources), sem(semaphore)*/
 typedef struct{
@@ -110,7 +109,7 @@ int findSpot()
 	int i;
 	for(i = 0; i < MAX_PROCESSES; i++)
 	{
-		if(req->pid[i] == 0)
+		if(req->pid[i] == -1)
 		{
 			return i;
 		}
@@ -121,11 +120,12 @@ int findSpot()
 //instances (1 - 10) inclusive
 void initDescriptor(Descriptor* req)
 {
+	srand(time(0));
 
 	int i, j;
 	for(i = 0; i < MAX_PROCESSES; i++)
 	{
-		req->pid[i] = 0;
+		req->pid[i] = -1;
 
 		for(j = 0; j < MAX_RESOURCES; j++)
 		{
@@ -156,6 +156,7 @@ void fillTables(Descriptor* req, int alloc[MAX_PROCESSES][MAX_RESOURCES],int ava
 	}
 }
 
+//update request matrix with latest requests
 void updateRequest(Descriptor *req, int array[MAX_PROCESSES][MAX_RESOURCES])
 {
 	int i, j;
@@ -169,6 +170,112 @@ void updateRequest(Descriptor *req, int array[MAX_PROCESSES][MAX_RESOURCES])
 	}
 }
 
+//if enough avail resources allocate else put in sleep queue
+void checkRequest(struct Queue *queue, Descriptor *req, int pos)
+{
+	Msg msg;
+	int row, column;
+	for(row = 0; row < MAX_PROCESSES; row++)
+	{
+		if(row == pos)
+		{
+			for(column = 0; column < MAX_RESOURCES; column++)
+			{
+				if(req->request[row][column] != 0)
+				{
+					if(written < 100000)
+					{
+						fprintf(stderr, "OSS has detected P%d requesting R%d at time %d:%d\n",
+							row, column, clock->seconds, clock->nano);
+						written++;
+					}
+
+					int maxAlloc = req->curAlloc[row][column] + req->request[row][column];
+					if(maxAlloc <= resMatrix[column] && resMatrix[column] != 0)
+					{
+						if(written < 100000)
+						{
+							fprintf(stderr, "OSS granting P%d request R%d at time %d:%d\n",
+								row, column, clock->seconds, clock->nano);
+							written++;
+						}
+						req->curAlloc[row][column] += req->request[row][column];
+						allocMatrix[row][column] = req->curAlloc[row][column];
+						updateRequest(req, reqMatrix);
+						resMatrix[column] -= req->request[row][column]; 
+						req->request[row][column] = 0;
+						
+						msg.mtype = req->pid[row];
+						strcpy(msg.msg,"ACCEPTED");
+						msgsnd(toUSR, &msg, sizeof(msg), IPC_NOWAIT);
+					}
+					else
+					{
+						if(written < 100000)
+						{
+							fprintf(stderr, "OSS denying P%d request R%d at time %d:%d\n",
+								row, column, clock->seconds, clock->nano);
+							written++;
+						}
+
+						insert(&queue, req->pid[row]);
+						
+						/*msg.mtype = req->pid[row];
+						strcpy(msg.msg, "DENIED");
+						msgsnd(toUSR, &msg, sizeof(msg), IPC_NOWAIT);*/
+					}
+					
+				}
+			
+			}
+		}
+		break;
+	}
+}
+
+void checkAgain(struct Queue *queue, Descriptor *req, int pos)
+{
+	Msg msg;
+	int row, column;
+	for(row = 0; row < MAX_PROCESSES; row++)
+	{
+		if(row == pos)
+		{
+			for(column = 0; column < MAX_RESOURCES; column++)
+			{
+				if(req->request[row][column] != 0)
+				{
+					int maxAlloc = req->curAlloc[row][column] + req->request[row][column];
+					if(maxAlloc <= resMatrix[column] && resMatrix[column] != 0)
+					{
+						if(written < 100000)
+						{
+							fprintf(stderr, "OSS granting P%d request R%d at time %d:%d\n",
+								row, column, clock->seconds, clock->nano);
+							written++;
+						}
+						req->curAlloc[row][column] += req->request[row][column];
+						allocMatrix[row][column] = req->curAlloc[row][column];
+						updateRequest(req, reqMatrix);
+						resMatrix[column] -= req->request[row][column];
+						req->request[row][column] = 0;
+						deleteQ(queue, req->pid[row]);
+
+						msg.mtype = req->pid[row];
+						strcpy(msg.msg, "ACCEPTED");
+						msgsnd(toUSR, &msg, sizeof(msg), IPC_NOWAIT);
+					}
+					else
+					{
+						return;
+					}
+				
+				}
+			}
+		}
+		break;
+	}
+}
 //terminate pid and release allocations back
 //to available.
 void offThePid(Descriptor *req, int pid)
@@ -197,10 +304,6 @@ void offThePid(Descriptor *req, int pid)
 				req->request[j][k] = 0;
 				reqMatrix[j][k] = 0;
 			}
-			kill(req->pid[j], SIGTERM);
-			req->pid[j] = 0;
-			launched--;
-			death++;
 		}
 		break;
 	}
@@ -211,12 +314,14 @@ void offThePid(Descriptor *req, int pid)
 //and request table
 void updatePid(int pos)
 {
-
+	srand(time(0));
+	
 	int i, j;
 	for(i = 0; i < MAX_PROCESSES; i++)
 	{
 		if(req->pid[i] == pos)
 		{
+			req->pid[i] = 0;
 			for(j = 0; j < MAX_RESOURCES; j++)
 			{
 				req->curAlloc[i][j] = (rand()% 10) + 1;
@@ -247,6 +352,7 @@ void releaseResource(Descriptor *req, int pid)
 				if(req->release[i][j] != 0)
 				{
 					req->curAlloc[i][j] -= req->release[i][j];
+					allocMatrix[i][j] = req->curAlloc[i][j];
 					resMatrix[j] += req->release[i][j];
 					req->release[i][j] = 0;
 				}
@@ -259,7 +365,7 @@ void releaseResource(Descriptor *req, int pid)
 //TODO: add in request checking and function to release enqueued processes
 
 //deadlock detection test
-void deadLock(Descriptor* req)
+void deadLock(Descriptor* req, struct Queue *queue)
 {
 	if(written < 100000)
 	{
@@ -385,27 +491,19 @@ void deadLock(Descriptor* req)
 		fprintf(stderr, "\nAttempting to resolve deadlock\n");
 		written++;
 	}
-	
+	Msg msg;	
 	//remove deadlocked processes
 	for(i = 0; i < MAX_PROCESSES; i++)
 	{
 		int dead = 0;
 		if(mark[i] != 1)
 		{
-			dead = 1;
-		}
-		
-		if(dead)
-		{
 			if(written < 100000)
 			{
-				fprintf(stderr, "Killing process P%d\n",i);
+				fprintf(stderr, "\nKilling process P%d\n",i);
 				written++;
 				fprintf(stderr,"   Resources released are as follows:");
 				written++;
-				unaturalDeath++;
-				launched--;
-				death++;
 				
 			}
 			for(j = 0; j < MAX_RESOURCES; j++)
@@ -421,11 +519,22 @@ void deadLock(Descriptor* req)
 				req->release[i][j] = 0;
 				req->request[i][j] = 0;
 			}
+		
+			if(search(queue, req->pid[i]) > 0)
+			{
+				deleteQ(&queue, req->pid[i]);
+			}
+			req->shared[i] = 0;
+			
+			msg.mtype = req->pid[i];
+			strcpy(msg.msg, "DEAD");
+			msgsnd(toUSR, &msg, sizeof(msg), 0);
+			/*kill(req->pid[i], SIGTERM);
+			death++;
+			launched--;
+			unaturalDeath++;*/
+			updatePid(i);
 		}
-		req->shared[i] = 0;
-		kill(req->pid[i], SIGTERM);
-		req->pid[i] = 0;
-		updatePid(i);
 	}
 	
 	printMatrix(allocMatrix);
@@ -471,6 +580,11 @@ void printMatrix(int arr[MAX_PROCESSES][MAX_RESOURCES])
 {
 
 	int i,j;
+	if(written < 100000)
+	{
+		fprintf(stderr, "\n line count = %d", written);
+		written++;
+	}
 
 	for(i = 0; i < MAX_RESOURCES; i++)
 	{

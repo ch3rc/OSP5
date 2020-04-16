@@ -9,6 +9,8 @@
 #ifndef SHARE_H
 #define SHARE_H
 
+#include "queue.h"
+
 #define MAX_PROCESSES 18
 #define MAX_RESOURCES 20
 
@@ -28,6 +30,11 @@ extern int resMatrix[MAX_RESOURCES];
 extern int reqMatix[MAX_PROCESSES][MAX_RESOURCES];
 //store the current resource allocation of processes
 extern int allocMatrix[MAX_PROCESSES][MAX_RESOURCES];
+
+extern int unaturalDeath;
+extern int naturalDeath;
+extern int launched;
+extern int death;
 
 //keys
 extern const key_t clockKey;
@@ -57,19 +64,18 @@ typedef struct{
 typedef struct{
 	
 	pid_t pid[MAX_PROCESSES];
-	Clock time;
-	int maxRes[MAX_RESOURCES];
-	int curAlloc[MAX_RESOURCES];
-	int release[MAX_RESOURCES];
-	int request[MAX_RESOURCES];
-	int shared;
+	int maxRes[MAX_PROCESSES][MAX_RESOURCES];
+	int curAlloc[MAX_PROCESSES][MAX_RESOURCES];
+	int release[MAX_PROCESSES][MAX_RESOURCES];
+	int request[MAX_PROCESSES][MAX_RESOURCES];
+	int shared[MAX_PROCESSES];
 
 }Descriptor;
 
 
-extern const Clock* clock;
-extern const Descriptor* req;
-extern const sem_t* sem;	
+extern Clock* clock;
+extern Descriptor* req;
+extern sem_t* sem;	
 
 //in setShare.c
 sem_t* getSem(const key_t, const size_t, int* );
@@ -81,6 +87,10 @@ void detachMem();
 void removeMem(int* );
 void cleanAll();
 void initClock(Clock* );
+void killAll(int);
+void timesUp(int);
+void destroy(int);
+void endProcesses();
 
 //in resources.c
 void tickClock(Clock*, unsigned int);
@@ -94,6 +104,9 @@ int getPos(Descriptor*,int);
 int findSpot();
 void fillTables(Descriptor*, int arr[MAX_PROCESSES][MAX_RESOURCES], int arr2[MAX_RESOURCES]);
 void banker(Descriptor*);
-void deadLock(Descriptor*);
+void deadLock(Descriptor*, struct Queue *);
 void offThePid(Descriptor*, int);
+void updatePid(int);
+void checkRequest(struct Queue *, Descriptor *, int);
+void checkAgain(struct Queue *, Descriptor *, int);
 #endif
