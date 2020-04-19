@@ -1,27 +1,64 @@
 ===============================================================
 			Compile and Run
 ===============================================================
+To compile type 'make'
 
+To Run type './oss -v filename' where filename is the file you
+want to results to. If '-v' is issued you will get full results
+if '-v' is left out you will get results of deadlock detection
 
-
+i currently have the program set to 200 max processes with an
+alarm of 6 seconds so it doesn't run forever. There is a pause
+at the end of the program to test out CTRL + C interrupts.
 
 ===============================================================
 			       Logs
 ===============================================================
-
-
-
+All logs can be found at:
+https://www.github.com/ch3rc/OSP5
 
 ===============================================================
 			    Issues
 ===============================================================
+Ran into a few issues
 
+1. Deadlock is hardly working, it is very selective on the times
+it runs due to not enough denied processes. If to many processes
+are denied the program locks up.
 
+2. The pids that end up continuing usually end up being the same
+pid over and over due to other process stuck in an endless
+loop waiting for an accepted msg from OSS.
 
+3. Couldnt seem to get the message Queues quite right but i got
+the close enough to at least sort of demonstrate the process.
 
+sometimes the program is tempermental and may not fully finish
+other times it will finish, but you will always have to check
+for shared memory that wasnt properly detached on the SIGALRM
 
+to do this you will have to run the commands below:
+ipcrm -M 0x11111111
+ipcrm -M 0x22222222
+ipcrm -M 0x33333333
+ipcrm -Q 0x44444444
+ipcrm -Q 0x55555555
 
+I always check for any left over processes that didnt exit with
+ipcs -mp | grep {directory}
 
+if one is left over remove it with
+kill -s KILL -- -{pid number}
 
+===============================================================
+			Deadlock
+===============================================================
+For the deadlock i added queues to a circular doubly linked list
+that after 10 processes entered the queue i would terminate them
+as to not cause a system lock due to all processes being in sleep
+mode waiting for resources.
 
+I had another deadlock that was checking against the work needed
+to be done but it ended up always trying to remove every process
+but never actually doing it.
 ===============================================================

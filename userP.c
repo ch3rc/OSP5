@@ -19,15 +19,8 @@
 #include <semaphore.h>
 #include "share.h"
 
-typedef struct{
-
-	long mtype;
-	char msg[100];
-}Msg;
-
 int main(int argc, char *argv[])
 {
-	fprintf(stderr, "YOU MADE IT IN\n");
 
 	/*shared mem pointers clock, req, sem */
 	signal(SIGTERM, &destroy);
@@ -37,36 +30,36 @@ int main(int argc, char *argv[])
 
 	int p = atoi(argv[0]);
 
-	fprintf(stderr, "child position is %d\n", p);
+	int pid = getpid();
 
 	initMem();
-
-	fprintf(stderr, "child got memory\n");
 
 	message();
 
 	Msg msg;
 	
+	req->rpid[p] = pid;
 
 	//initial time to check for termination of 1 second
 	Clock termtime;
 	termtime.nano = clock->nano;
-	termtime.seconds = clock->seconds + 1;
-
-	//fprintf(stderr, "my pid = %d\n", req->pid[p]);	
-
+	termtime.seconds = clock->seconds + 1;	
+	
+	int test, block;
 	
 	while(1)
 	{
-		msgrcv(toUSR, &msg, sizeof(msg), req->pid[p], IPC_NOWAIT);
+		test = 0;
+		block = 0;	
+		msgrcv(toUSR, &msg, sizeof(msg), req->rpid[p], IPC_NOWAIT);
 		
 			
 		
 		if(strcmp(msg.msg, "DEAD") == 0)
 		{
-			msg.mtype = req->pid[p];
-			strcpy(msg.msg, "DEADLOCKED");
-			msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+			msg.mtype = req->rpid[p];
+			strcpy(msg.msg, "DEADLOCK");
+			msgsnd(toOSS, &msg, sizeof(msg), 0);
 			detachMem();
 			exit(12);
 		}
@@ -77,47 +70,58 @@ int main(int argc, char *argv[])
 		{
 			if((rand() % 100) <= 20)
 			{
-				//fprintf(stderr, "Terminating\n");
-				msg.mtype = req->pid[p];
+				msg.mtype = req->rpid[p];
 				strcpy(msg.msg, "TERMINATE");
-				msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+				msgsnd(toOSS, &msg, sizeof(msg), 0);
 				detachMem();
 				exit(12);
 			}
 			termtime.nano = clock->nano;
 			termtime.seconds = clock->seconds;
-			unsigned int bound = (rand() % 2500000);
+			unsigned int bound = (rand() % 250000000);
 			tickClock(&termtime, bound);
 		}
 		//release
-		if((rand() % 100) >= 80)
+		if((rand() % 100) >= 85)
 		{
 
 			int itemToRequest = (rand() % 20);
-			req->request[p][itemToRequest] = 1;
-
-			msg.mtype = req->pid[p];
+			req->request[p][itemToRequest] = (rand() % 10) + 1;
+			//fprintf(stderr, "sending a request %d\n", req->pid[p]);
+			msg.mtype = req->rpid[p];
 			strcpy(msg.msg, "REQUEST");
-			msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+			msgsnd(toOSS, &msg, sizeof(msg), 0);
+			test = 1;
 
 			while(1)
 			{
-				if(msgrcv(toUSR, &msg, sizeof(msg), req->pid[p], IPC_NOWAIT) > 0)
-				{	
+				if(test == 1 && block != 1)
+				{
+					//fprintf(stderr, "\nstuck in loop %d\n", req->pid[p]);
+					block = 1;
+				}
+				
+				if(msgrcv(toUSR, &msg, sizeof(msg), req->rpid[p], 0) > 0)
+				{
+	
 					if(strcmp(msg.msg, "ACCEPTED") == 0)
 					{
+						//fprintf(stderr, "\n%d has been accepted\n", req->pid[p]);
 						break;
 					}
 
 					if(strcmp(msg.msg, "DEAD") == 0)
 					{
-						msg.mtype = req->pid[p];
-						strcpy(msg.msg, "DEADLOCKED");
-						msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+						msg.mtype = req->rpid[p];
+						strcpy(msg.msg, "DEADLOCK");
+						msgsnd(toOSS, &msg, sizeof(msg), 0);
+						//fprintf(stderr, "\nmade it into DEAD\n");
+						//raise(SIGTERM);
 						detachMem();
 						exit(12);
 					}
 				}
+				
 			
 			}
 
@@ -128,17 +132,18 @@ int main(int argc, char *argv[])
 			if(req->curAlloc[p][itemToRelease] != 0)
 			{
 				req->release[p][itemToRelease] = 1;
-				msg.mtype = req->pid[p];
+				msg.mtype = req->rpid[p];
 				strcpy(msg.msg, "RELEASE");
-				msgsnd(toOSS, &msg, sizeof(msg), IPC_NOWAIT);
+				msgsnd(toOSS, &msg, sizeof(msg), 0);
 			}
 	
 		}
+		
 
 		
 
 		sem_wait(sem);
-		tickClock(clock, 10000);
+		tickClock(clock, (rand() % 250000000));
 		sem_post(sem);	
 
 	}

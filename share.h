@@ -22,6 +22,14 @@
 #define MSG1 0x44444444
 #define MSG2 0x55555555
 
+/*strictly for testing */
+#define REQUEST 1
+#define RELEASE 2
+#define TERMINATE 3
+#define DEADLOCK 4
+#define ACCEPTED 5
+#define DENIED 6
+
 //total available resources
 extern int availMatrix[MAX_RESOURCES];
 //total resources
@@ -35,6 +43,7 @@ extern int unaturalDeath;
 extern int naturalDeath;
 extern int launched;
 extern int death;
+extern int granted;
 
 //keys
 extern const key_t clockKey;
@@ -53,6 +62,17 @@ extern const size_t clockSize;
 extern const size_t reqSize;
 extern const size_t semSize;
 
+//flags
+extern int verbose;
+extern char *filename;
+extern FILE *fp;
+
+typedef struct{
+	
+	long mtype;
+	char msg[500];
+}Msg;
+
 typedef struct{
 	
 	unsigned int nano;
@@ -63,8 +83,8 @@ typedef struct{
 
 typedef struct{
 	
-	pid_t pid[MAX_PROCESSES];
-	int maxRes[MAX_PROCESSES][MAX_RESOURCES];
+	int pid[MAX_PROCESSES];
+	pid_t rpid[MAX_PROCESSES];
 	int curAlloc[MAX_PROCESSES][MAX_RESOURCES];
 	int release[MAX_PROCESSES][MAX_RESOURCES];
 	int request[MAX_PROCESSES][MAX_RESOURCES];
@@ -76,6 +96,13 @@ typedef struct{
 extern Clock* clock;
 extern Descriptor* req;
 extern sem_t* sem;	
+extern struct Queue *queue;
+//oss.c
+void initOpts();
+void setOpts(int argc, char *argv[]);
+void deadLock(Descriptor *);
+void checkRequest(Descriptor *, int);
+void checkAgain(Descriptor *, int);
 
 //in setShare.c
 sem_t* getSem(const key_t, const size_t, int* );
@@ -84,13 +111,14 @@ void message();
 void initMem();
 void clearMessage();
 void detachMem();
-void removeMem(int* );
+void removeMem(int);
 void cleanAll();
 void initClock(Clock* );
 void killAll(int);
 void timesUp(int);
 void destroy(int);
 void endProcesses();
+
 
 //in resources.c
 void tickClock(Clock*, unsigned int);
@@ -104,9 +132,7 @@ int getPos(Descriptor*,int);
 int findSpot();
 void fillTables(Descriptor*, int arr[MAX_PROCESSES][MAX_RESOURCES], int arr2[MAX_RESOURCES]);
 void banker(Descriptor*);
-void deadLock(Descriptor*, struct Queue *);
 void offThePid(Descriptor*, int);
 void updatePid(int);
-void checkRequest(struct Queue *, Descriptor *, int);
-void checkAgain(struct Queue *, Descriptor *, int);
+
 #endif

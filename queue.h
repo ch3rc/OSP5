@@ -27,7 +27,8 @@ int search(struct Queue *, int);
 //remove pid from queue if request can
 //be met
 void deleteQ(struct Queue **, int);
-
+//printout
+void display(struct Queue *);
 
 
 

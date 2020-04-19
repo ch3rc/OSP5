@@ -43,6 +43,9 @@ key_t msgFrm;
 int toOSS;
 int toUSR;
 
+FILE *fp;
+int naturalDeath;
+int unaturalDeath;	
 sem_t* getSem(const key_t key, const size_t size, int* shmid)
 {
 	*shmid = shmget(key, size, PERM);
@@ -132,17 +135,14 @@ void clearMessage()
 
 void detachMem()
 {
-	if(clockID > 0)
-		shmdt(&clockID);
-	if(reqID > 0)
-		shmdt(&reqID);
-	if(semID > 0)
-		shmdt(&semID);
+	shmdt(clock);
+	shmdt(req);
+	shmdt(sem);
 }
 
-void removeMem(int* shmid)
+void removeMem(int shmid)
 {
-	int temp = shmctl(*shmid, IPC_RMID, NULL);
+	int temp = shmctl(shmid, IPC_RMID, NULL);
 	if(temp == -1)
 	{
 		perror("OSS: shmct failed\n");
@@ -153,11 +153,11 @@ void removeMem(int* shmid)
 void cleanAll()
 {
 	if(clockID > 0)
-		removeMem(&clockID);
+		removeMem(clockID);
 	if(reqID > 0)
-		removeMem(&reqID);
+		removeMem(reqID);
 	if(semID > 0)
-		removeMem(&semID);
+		removeMem(semID);
 }
 
 void initClock(Clock* mainClock)
@@ -176,7 +176,7 @@ void timesUp(int sig)
 	int i;
 	for(i = 0; i < MAX_PROCESSES; i++)
 	{
-		if(req->pid[i] != 0)
+		if(req->pid[i] != -1)
 		{
 			if(kill(req->pid[i], SIGTERM) == -1)
 			{
@@ -184,7 +184,9 @@ void timesUp(int sig)
 			}
 		}
 	}
-	
+	fclose(fp);
+	printf("Terminations = %d\n", naturalDeath);
+	printf("Deadlock terminations = %d\n", unaturalDeath);
 	clearMessage();
 	cleanAll();
 	exit(0);
@@ -199,7 +201,7 @@ void killAll(int sig)
 	int i;
 	for(i = 0; i < MAX_PROCESSES; i++)
 	{
-		if(req->pid[i] != 0)
+		if(req->pid[i] != -1)
 		{
 			if(kill(req->pid[i], SIGTERM) == -1)
 			{
@@ -217,7 +219,7 @@ void endProcesses()
 	int i;
 	for(i = 0; i < MAX_PROCESSES; i++)
 	{
-		if(req->pid[i] != 0)
+		if(req->pid[i] != -1)
 		{
 			if(kill(req->pid[i], SIGTERM) == -1)
 			{
@@ -225,13 +227,148 @@ void endProcesses()
 			}
 		}
 	}
-	clearMessage();
-	cleanAll();
+	//clearMessage();
+	//cleanAll();
 }
 
 void destroy(int sig)
 {
-	shmdt(&clockID);
-	shmdt(&reqID);
-	shmdt(&sem);
+	shmdt(clock);
+	shmdt(req);
+	shmdt(sem);
+	exit(12);
+}
+
+
+void insert(struct Queue **start, int pid)
+{
+	if(*start == NULL)
+	{
+		struct Queue *new_queue = (struct Queue *)malloc(sizeof(struct Queue));
+		new_queue->pid = pid;
+		new_queue->next = new_queue->prev = new_queue;
+		*start = new_queue;
+		return;
+	}
+
+	struct Queue *last = (*start)->prev;
+
+	struct Queue *new_queue = (struct Queue*)malloc(sizeof(struct Queue));
+	
+	new_queue->pid = pid;
+
+	new_queue->next = *start;
+
+	(*start)->prev = new_queue;
+
+	new_queue->prev = last;
+
+	last->next = new_queue;
+}
+
+
+int search(struct Queue *start, int pid)
+{
+	struct Queue *temp = start;
+
+	int flag = 0;
+
+	if(temp == NULL)
+	{
+		return -1;
+	}
+	else
+	{
+		while(temp->next != start)
+		{
+			if(temp->pid == pid)
+			{
+				flag = 1;
+				break;
+			}
+			temp = temp->next;
+		}
+
+		if(temp->pid == pid)
+		{
+			flag = 1;
+		}
+		
+		if(flag == 1)
+		{
+			return 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+}
+
+void deleteQ(struct Queue **start, int pid)
+{
+	if(*start == NULL)
+	{
+		return;
+	}
+
+	struct Queue *curr = *start, *prev_1 = NULL;
+
+	while(curr->pid != pid)
+	{
+		if(curr->next == *start)
+		{
+			return;
+		}
+		prev_1 = curr;
+		curr = curr->next;
+	}
+
+	if(curr->next == *start && prev_1 == NULL)
+	{
+		(*start) = NULL;
+		free(curr);
+		return;
+	}
+
+	if(curr == *start)
+	{
+		prev_1 = (*start)->prev;
+		
+		*start = (*start)->next;
+		
+		prev_1->next = *start;
+
+		(*start)->prev = prev_1;
+
+		free(curr);
+	}
+	else if(curr->next == *start)
+	{
+		struct Queue *temp = curr->next;
+
+		prev_1->next = temp;
+
+		temp->prev = prev_1;
+
+		free(curr);
+	}
+}
+
+void display(struct Queue *start)
+{
+	if(start == NULL)
+	{
+		fprintf(stderr, "\nQueue list is empty\n");
+		return;
+	}
+
+	struct Queue *temp = start;
+
+	while(temp->next != start)
+	{
+		fprintf(stderr, "%d ", temp->pid);
+		temp = temp->next;
+	}
+	fprintf(stderr, "%d ", temp->pid);
 }

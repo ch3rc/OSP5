@@ -6,14 +6,14 @@ OBJS = setShare.o resources.o
 all: oss userP
 
 oss: oss.o $(OBJS)
-	$(CC) $(CFLAGS) -o $@ oss.o $(OBJS) -lpthread
+	$(CC) $(CFLAGS) -o $@ oss.o $(OBJS) -pthread
 
 userP: userP.o $(OBJS)
-	$(CC) $(CFLAGS) -o $@ userP.o $(OBJS) -lpthread
+	$(CC) $(CFLAGS) -o $@ userP.o $(OBJS) -pthread
 
 .c.o:
 	$(CC) $(CFLAGS) -c $<
 
 .PHONY: clean
 clean:
-	rm *.o oss userP
+	rm *.o *.txt oss userP
